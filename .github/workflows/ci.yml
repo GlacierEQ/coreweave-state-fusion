@@ -2,13 +2,24 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [master, develop, "feat/**"]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
-  ci:
-    uses: GlacierEQ/public-actions-runner-host/.github/workflows/reusable-quick-ci.yml@main
-    with:
-      repo_name: ${{ github.event.repository.name }}
-      language: python
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile
+        run: python -m compileall -q src tests
+      - name: Contract tests
+        run: python -m unittest discover -s tests -v
+      - name: Deterministic smoke benchmark
+        run: |
+          python src/failure_lab.py --seed 7 --fault network_straggler > /tmp/run-a.json
+          python src/failure_lab.py --seed 7 --fault network_straggler > /tmp/run-b.json
+          cmp /tmp/run-a.json /tmp/run-b.json
