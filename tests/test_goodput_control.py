@@ -147,11 +147,18 @@ class AttributionTests(unittest.TestCase):
 class BenchmarkTests(unittest.TestCase):
     def test_fault_benchmark_detects_majority(self):
         result = benchmark(range(1, 9), "network_straggler")
-        self.assertGreaterEqual(result["detection_rate"], 0.75)
+        self.assertGreaterEqual(result["actionable_detection_rate"], 0.75)
 
     def test_healthy_benchmark_avoids_disruptive_intervention(self):
         result = benchmark(range(1, 9), "healthy")
+        self.assertEqual(result["actionable_detection_rate"], 0.0)
         self.assertEqual(result["disruptive_interventions"], 0)
+
+    def test_raw_signal_is_not_actionable_detection(self):
+        result = benchmark(range(1, 9), "healthy")
+        self.assertGreaterEqual(
+            result["raw_signal_rate"], result["actionable_detection_rate"]
+        )
 
     def test_attribution_accuracy_is_reported(self):
         result = benchmark(range(1, 9), "storage_degradation")
