@@ -10,6 +10,7 @@ from typing import Dict, Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from attribution import RootCauseAttributor  # noqa: E402
 from goodput_control import (  # noqa: E402
     CounterfactualPlanner,
     RemediationContext,
@@ -66,14 +67,23 @@ def run_scenario(seed: int, fault: str) -> Dict[str, object]:
     engine = StateFusionEngine(topology)
     first_detection = None
     sample_count = 0
+    pre_fault_step_times = []
+    post_fault_step_times = []
 
     for sample in generate_samples(seed=seed, fault=fault):
         signal = engine.ingest(sample)
         if signal and first_detection is None:
             first_detection = sample.timestamp
+        if sample.component_id == "job-0" and sample.metric == "step_time_s":
+            if sample.timestamp <= 32:
+                pre_fault_step_times.append(sample.value)
+            else:
+                post_fault_step_times.append(sample.value)
         sample_count += 1
 
     state = engine.fuse()
+    attributor = RootCauseAttributor()
+    causes = attributor.rank(state, topology)
     planner = CounterfactualPlanner()
     context = RemediationContext(
         confidence=min(1.0, 0.55 + state.system_risk),
@@ -83,11 +93,45 @@ def run_scenario(seed: int, fault: str) -> Dict[str, object]:
         recurrence_risk=0.65,
     )
     receipt = planner.choose(state, context)
+
+    baseline_step = sum(pre_fault_step_times) / max(len(pre_fault_step_times), 1)
+    post_fault_step = sum(post_fault_step_times) / max(len(post_fault_step_times), 1)
+    actual_goodput_loss = (
+        max(0.0, 1.0 - baseline_step / post_fault_step)
+        if post_fault_step > 0
+        else 0.0
+    )
+    expected_root = {
+        "network_straggler": "nic-0",
+        "gpu_thermal_drift": "gpu-1",
+        "storage_degradation": "storage-0",
+        "healthy": None,
+    }[fault]
+    top_cause = causes[0].component_id if causes else None
+
     return {
         "seed": seed,
         "fault": fault,
+        "expected_root": expected_root,
+        "top_cause": top_cause,
+        "top1_correct": top_cause == expected_root if expected_root else top_cause is None,
+        "causes": [
+            {
+                "component_id": cause.component_id,
+                "score": cause.score,
+                "component_risk": cause.component_risk,
+                "downstream_pressure": cause.downstream_pressure,
+                "blast_radius": cause.blast_radius,
+                "layer": cause.layer,
+            }
+            for cause in causes
+        ],
         "first_detection_timestamp": first_detection,
         "samples": sample_count,
+        "actual_goodput_loss": round(actual_goodput_loss, 6),
+        "goodput_calibration_error": round(
+            abs(state.goodput_at_risk - actual_goodput_loss), 6
+        ),
         "state": serialize_state(state),
         "selected_action": receipt.selected_action.value,
         "policy_reason": receipt.policy_reason,
@@ -110,9 +154,21 @@ def benchmark(seeds: Iterable[int], fault: str) -> Dict[str, object]:
         "runs": len(runs),
         "detections": len(detected),
         "detection_rate": round(len(detected) / max(len(runs), 1), 6),
+        "top1_attribution_accuracy": round(
+            sum(bool(run["top1_correct"]) for run in runs) / max(len(runs), 1),
+            6,
+        ),
         "disruptive_interventions": len(interventions),
         "mean_goodput_at_risk": round(
             sum(run["state"]["goodput_at_risk"] for run in runs) / max(len(runs), 1),
+            6,
+        ),
+        "mean_actual_goodput_loss": round(
+            sum(run["actual_goodput_loss"] for run in runs) / max(len(runs), 1),
+            6,
+        ),
+        "mean_goodput_calibration_error": round(
+            sum(run["goodput_calibration_error"] for run in runs) / max(len(runs), 1),
             6,
         ),
         "action_counts": {
