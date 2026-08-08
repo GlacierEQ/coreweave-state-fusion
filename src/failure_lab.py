@@ -5,12 +5,14 @@ import argparse
 import json
 import random
 import sys
+from dataclasses import replace
 from pathlib import Path
 from typing import Dict, Iterable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from attribution import RootCauseAttributor  # noqa: E402
+from calibration import SyntheticGoodputCalibrator  # noqa: E402
 from goodput_control import (  # noqa: E402
     CounterfactualPlanner,
     RemediationContext,
@@ -81,7 +83,12 @@ def run_scenario(seed: int, fault: str) -> Dict[str, object]:
                 post_fault_step_times.append(sample.value)
         sample_count += 1
 
-    state = engine.fuse()
+    raw_state = engine.fuse()
+    calibrator = SyntheticGoodputCalibrator()
+    state = replace(
+        raw_state,
+        goodput_at_risk=calibrator.apply(raw_state.goodput_at_risk),
+    )
     attributor = RootCauseAttributor()
     causes = attributor.rank(state, topology)
     planner = CounterfactualPlanner()
@@ -128,6 +135,7 @@ def run_scenario(seed: int, fault: str) -> Dict[str, object]:
         ],
         "first_detection_timestamp": first_detection,
         "samples": sample_count,
+        "raw_goodput_at_risk": raw_state.goodput_at_risk,
         "actual_goodput_loss": round(actual_goodput_loss, 6),
         "goodput_calibration_error": round(
             abs(state.goodput_at_risk - actual_goodput_loss), 6
