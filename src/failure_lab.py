@@ -68,7 +68,7 @@ def run_scenario(seed: int, fault: str) -> Dict[str, object]:
     topology = build_demo_topology()
     engine = StateFusionEngine(topology)
     first_detection = None
-    sample_count = 0
+    sample_index = 0
     pre_fault_step_times = []
     post_fault_step_times = []
 
@@ -81,7 +81,7 @@ def run_scenario(seed: int, fault: str) -> Dict[str, object]:
                 pre_fault_step_times.append(sample.value)
             else:
                 post_fault_step_times.append(sample.value)
-        sample_count += 1
+        sample_index += 1
 
     raw_state = engine.fuse()
     calibrator = SyntheticGoodputCalibrator()
@@ -115,6 +115,14 @@ def run_scenario(seed: int, fault: str) -> Dict[str, object]:
         "healthy": None,
     }[fault]
     top_cause = causes[0].component_id if causes else None
+    active_components = sum(
+        risk >= 0.25 for risk in state.component_risk.values()
+    )
+    actionable_detection = (
+        active_components >= 2
+        and state.system_risk >= 0.25
+        and state.goodput_at_risk >= 0.25
+    )
 
     return {
         "seed": seed,
@@ -133,8 +141,10 @@ def run_scenario(seed: int, fault: str) -> Dict[str, object]:
             }
             for cause in causes
         ],
-        "first_detection_timestamp": first_detection,
-        "samples": sample_count,
+        "first_raw_signal_timestamp": first_detection,
+        "raw_signal_observed": first_detection is not None,
+        "actionable_detection": actionable_detection,
+        "samples": sample_index,
         "raw_goodput_at_risk": raw_state.goodput_at_risk,
         "actual_goodput_loss": round(actual_goodput_loss, 6),
         "goodput_calibration_error": round(
@@ -145,23 +155,30 @@ def run_scenario(seed: int, fault: str) -> Dict[str, object]:
         "policy_reason": receipt.policy_reason,
         "state_digest": receipt.state_digest,
         "receipt_digest": receipt.receipt_digest,
-        "ranked_actions": [serialize_action_score(score) for score in receipt.scores],
+        "ranked_actions": [
+            serialize_action_score(score)
+            for score in receipt.scores
+        ],
     }
 
 
 def benchmark(seeds: Iterable[int], fault: str) -> Dict[str, object]:
     runs = [run_scenario(seed, fault) for seed in seeds]
-    detected = [run for run in runs if run["first_detection_timestamp"] is not None]
+    raw_signaled = [run for run in runs if run["raw_signal_observed"]]
+    actionable = [run for run in runs if run["actionable_detection"]]
     interventions = [
-        run
-        for run in runs
+        run for run in runs
         if run["selected_action"] not in {"observe", "throttle"}
     ]
     return {
         "fault": fault,
         "runs": len(runs),
-        "detections": len(detected),
-        "detection_rate": round(len(detected) / max(len(runs), 1), 6),
+        "raw_signal_runs": len(raw_signaled),
+        "raw_signal_rate": round(len(raw_signaled) / max(len(runs), 1), 6),
+        "actionable_detections": len(actionable),
+        "actionable_detection_rate": round(
+            len(actionable) / max(len(runs), 1), 6
+        ),
         "top1_attribution_accuracy": round(
             sum(bool(run["top1_correct"]) for run in runs) / max(len(runs), 1),
             6,
@@ -202,11 +219,11 @@ def main() -> int:
     )
     parser.add_argument("--benchmark", action="store_true")
     args = parser.parse_args()
-    result = (
-        benchmark(range(args.seed, args.seed + 16), args.fault)
-        if args.benchmark
-        else run_scenario(args.seed, args.fault)
-    )
+
+    if args.benchmark:
+        result = benchmark(range(args.seed, args.seed + 16), args.fault)
+    else:
+        result = run_scenario(args.seed, args.fault)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
