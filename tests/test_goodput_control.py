@@ -117,6 +117,33 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("receipt_digest", encoded)
 
 
+class AttributionTests(unittest.TestCase):
+    def test_network_fault_attributes_nic(self):
+        result = run_scenario(seed=7, fault="network_straggler")
+        self.assertEqual(result["top_cause"], "nic-0")
+        self.assertTrue(result["top1_correct"])
+
+    def test_gpu_fault_attributes_gpu(self):
+        result = run_scenario(seed=7, fault="gpu_thermal_drift")
+        self.assertEqual(result["top_cause"], "gpu-1")
+        self.assertTrue(result["top1_correct"])
+
+    def test_storage_fault_attributes_storage(self):
+        result = run_scenario(seed=7, fault="storage_degradation")
+        self.assertEqual(result["top_cause"], "storage-0")
+        self.assertTrue(result["top1_correct"])
+
+    def test_healthy_run_emits_no_root_cause(self):
+        result = run_scenario(seed=11, fault="healthy")
+        self.assertIsNone(result["top_cause"])
+        self.assertTrue(result["top1_correct"])
+
+    def test_fault_has_measured_synthetic_goodput_loss(self):
+        fault = run_scenario(seed=7, fault="network_straggler")
+        healthy = run_scenario(seed=7, fault="healthy")
+        self.assertGreater(fault["actual_goodput_loss"], healthy["actual_goodput_loss"])
+
+
 class BenchmarkTests(unittest.TestCase):
     def test_fault_benchmark_detects_majority(self):
         result = benchmark(range(1, 9), "network_straggler")
@@ -125,6 +152,15 @@ class BenchmarkTests(unittest.TestCase):
     def test_healthy_benchmark_avoids_disruptive_intervention(self):
         result = benchmark(range(1, 9), "healthy")
         self.assertEqual(result["disruptive_interventions"], 0)
+
+    def test_attribution_accuracy_is_reported(self):
+        result = benchmark(range(1, 9), "storage_degradation")
+        self.assertGreaterEqual(result["top1_attribution_accuracy"], 0.75)
+
+    def test_goodput_calibration_error_is_reported(self):
+        result = benchmark(range(1, 9), "network_straggler")
+        self.assertGreaterEqual(result["mean_goodput_calibration_error"], 0.0)
+        self.assertLessEqual(result["mean_goodput_calibration_error"], 1.0)
 
 
 if __name__ == "__main__":
