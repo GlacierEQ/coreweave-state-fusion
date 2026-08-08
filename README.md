@@ -27,8 +27,9 @@ without answering the higher-value question:
 
 ```text
 telemetry
+  -> bounded behavioral evidence
   -> topology-aware state fusion
-  -> persistent degradation evidence
+  -> actionable cross-layer degradation
   -> probable root-cause ranking
   -> calibrated lab goodput-at-risk
   -> counterfactual action scores
@@ -57,29 +58,57 @@ or production performance uplift is claimed.
 
 ## Built now
 
-### Topology state graph
+### Auditable module boundaries
 
-`TopologyGraph` models workload-to-infrastructure dependencies and computes
-blast radius through those dependencies.
+The original control-plane surface is preserved through `src/goodput_control.py`,
+while implementation responsibilities are split into:
 
-### Raw signal vs actionable degradation
+- `control_types.py` — types, topology, canonical serialization, digests;
+- `detectors.py` — rolling baseline, trend, entropy, harmful-direction policy;
+- `fusion_engine.py` — bounded evidence fusion and raw goodput risk;
+- `recovery.py` — fail-closed policy and Recovery Regret planning;
+- `attribution.py` — topology-aware probable root-cause ranking;
+- `calibration.py` — explicitly synthetic-only goodput calibration.
 
-`RollingBaselineDetector` can emit statistical signals during both healthy and
-faulted synthetic runs. `StateFusionEngine` therefore does **not** equate a raw
-z-score excursion with a failure. Actionable degradation requires persistent
-risk across at least two components plus system/goodput risk gates.
+### Signal is not actionability
 
-### Experimental entropy signal
+`RollingBaselineDetector` can emit statistical signals during healthy synthetic
+runs. The controller does **not** equate a raw z-score excursion with a failure.
+Actionable degradation requires persistent harmful evidence across at least two
+components plus system/goodput risk gates.
 
-`EntropyMonitor` computes normalized Shannon entropy over recent quantized
-metric distributions and tracks entropy acceleration. It is explicitly an
-experimental signal; the code does **not** claim that entropy predicts failure.
+The failure lab separately records background raw signals, actionable false
+positives, post-injection detection time, and final recovery action.
+
+### Bounded and recoverable evidence
+
+Historical anomalies no longer live forever. `StateFusionEngine` expires raw
+signals using a bounded evidence TTL. Snapshot-only trend evidence is not
+appended back into history, so repeated `fuse()` calls without new telemetry are
+idempotent instead of manufacturing persistence.
+
+### Direction-aware risk
+
+Automatic degradation scoring is conservative about whether movement is
+harmful. Higher latency/step time/error pressure is harmful; lower utilization,
+throughput, bandwidth, goodput, or health is harmful. Beneficial movements stay
+observable without being promoted into intervention risk. Unknown semantics do
+not authorize automatic degradation scoring.
+
+### Input and entropy hardening
+
+Non-finite telemetry values/timestamps are rejected before state mutation.
+Constant entropy windows return zero safely; invalid/zero-width binning cannot
+enter the entropy calculation.
+
+`EntropyMonitor` remains explicitly experimental. The code does **not** claim
+that entropy predicts production failures.
 
 ### Root-cause attribution
 
-`RootCauseAttributor` ranks probable initiating components using persistent local
-risk, topology blast radius, and downstream evidence. It is an attribution
-heuristic, not proof of causality.
+`RootCauseAttributor` ranks probable initiating components from current local
+risk, downstream pressure, and topology blast radius. It is an attribution
+heuristic, not proof of physical causality.
 
 ### Goodput-at-risk
 
@@ -101,42 +130,38 @@ production constant.
 
 using the Recovery Regret cost model.
 
-### Fail-closed governance
-
-`RecoveryPolicy` blocks disruptive actions when evidence is too weak or required
-recovery capacity is unavailable.
-
 ### Machine-verifiable receipts
 
 Each fused state and recovery decision receives a deterministic SHA-256 digest
-over canonical JSON. `scripts/benchmark_matrix.py` also generates a deterministic
-benchmark receipt and digest.
+over canonical JSON. `scripts/benchmark_matrix.py` generates a bounded synthetic
+benchmark receipt that records aggregate evidence plus the number of per-run
+receipts rather than embedding every run digest in the matrix.
 
 ## Deterministic synthetic benchmark
 
-Generate the full matrix:
+Generate the matrix:
 
 ```bash
 python3 scripts/benchmark_matrix.py --output benchmarks/synthetic-v1.json
 ```
 
-Current committed receipt:
+Current committed bounded receipt (`glaciereq.goodput.synthetic-benchmark.v2`):
 
-`596615cc6ffb3324b826b683ad602ab49fd848ddc5a0dd7860cfa53f4f7caf45`
+`a9b754e61c95829e0fb10d33ef7d2b253d7bcbd0351e8ad582ca05bc6761f25c`
 
-Across 16 seeded runs per scenario in the synthetic lab:
+Across 16 seeded runs per scenario in the deterministic synthetic lab:
 
-| Scenario | Actionable detection | Top-1 attribution | Disruptive actions | Mean calibrated goodput error |
-|---|---:|---:|---:|---:|
-| healthy | 0% | 100% no-cause classification | 0 / 16 | 0.044407 |
-| network straggler | 100% | 100% | 16 / 16 | 0.024873 |
-| GPU drift proxy | 100% | 100% | 16 / 16 | 0.015584 |
-| storage degradation | 100% | 100% | 16 / 16 | 0.063914 |
+| Scenario | Actionable detection | Actionable false positives | Mean detection delay | Top-1 attribution | Disruptive actions | Mean calibrated goodput error |
+|---|---:|---:|---:|---:|---:|---:|
+| healthy | 0% | 0% | — | 100% no-cause classification | 0 / 16 | 0.001694 |
+| network straggler | 100% | 0% | 1.75 steps | 100% | 16 / 16 | 0.024901 |
+| GPU drift proxy | 100% | 0% | 2.8125 steps | 100% | 16 / 16 | 0.014609 |
+| storage degradation | 100% | 0% | 1.875 steps | 100% | 16 / 16 | 0.060702 |
 
-A deliberately important result: **raw statistical signal rate is 100% even in
-the healthy synthetic runs**, while actionable detection remains 0% and no
-disruptive action occurs. This is why the control plane keeps signal,
-degradation, and authorization as separate states.
+A deliberately important result: raw statistical signals occur in all healthy
+synthetic runs, but **actionable detection remains 0%, actionable false-positive
+rate remains 0%, and disruptive actions remain 0/16**. That separation prevents
+ordinary statistical noise from becoming an intervention claim.
 
 These numbers are synthetic regression evidence only. They are not estimates of
 real CoreWeave, OpenAI, NVIDIA, or other production-fleet performance.
@@ -165,15 +190,23 @@ python3 -m compileall -q src tests scripts
 python3 -m unittest discover -s tests -v
 ```
 
-Current local contract suite: **18 tests** covering topology validation,
-blast-radius propagation, healthy no-op behavior, persistent cross-layer risk,
-deterministic receipts, policy gating, attribution, synthetic goodput loss,
-actionable detection, and raw-signal/actionability separation.
+Current local contract suite: **25 tests**. In addition to the original topology,
+policy, attribution, determinism, and benchmark contracts, review hardening now
+covers:
+
+- constant-value entropy safety;
+- non-finite telemetry rejection before mutation;
+- snapshot idempotence;
+- stale evidence expiry after recovery;
+- beneficial-direction exclusion from degradation risk;
+- post-injection actionable-detection timing;
+- healthy actionable false-positive protection.
 
 GitHub-hosted Actions verification is currently unable to start because the
 repository account's Actions budget blocks runner use. The workflow remains in
-place and also regenerates/byte-compares the benchmark receipt when hosted
-execution becomes available.
+place and will compile, run the contracts, verify deterministic scenario output,
+and regenerate/byte-compare the benchmark receipt when hosted execution is
+available.
 
 ## Promotion roadmap
 
@@ -182,11 +215,11 @@ execution becomes available.
 | P0 Truth | built | donor lineage reconciled; unsupported performance/novelty claims removed |
 | P1 Failure Lab | built / synthetic | deterministic seeded fault injection and replay |
 | P2 State Graph | built | workload -> node -> GPU/NIC/storage dependency traversal |
-| P3 Detection | partial | raw signal/actionable split built; comparative precision/recall still required |
+| P3 Detection | built / synthetic | raw/actionable boundary and post-injection timing; comparative baselines still required |
 | P4 Attribution | built / synthetic | probable root-cause ranking against injected faults |
 | P5 Goodput Risk | partial | synthetic calibration built; real trace calibration required |
-| P6 Planner | built / synthetic | Recovery Regret planner; baseline comparison still required |
-| P7 Control Plane | partial | fail-closed policy built; real idempotent action adapters/rollback required |
+| P6 Planner | built / synthetic | Recovery Regret planner; comparative intervention baseline still required |
+| P7 Control Plane | partial | fail-closed policy + evidence expiry built; real idempotent action adapters/rollback required |
 | P8 Temporal Placement | not promoted | real future-window/topology-aware scheduling required |
 | P9 Verification | next | prove post-action improvement or rollback/escalation |
 | P10 Evidence | partial | deterministic synthetic benchmark + receipts built; real trace corpus required |
