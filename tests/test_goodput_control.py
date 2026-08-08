@@ -11,6 +11,7 @@ from goodput_control import (
     Action,
     Component,
     CounterfactualPlanner,
+    EntropyMonitor,
     Layer,
     RecoveryPolicy,
     RemediationContext,
@@ -18,6 +19,7 @@ from goodput_control import (
     TelemetrySample,
     TopologyGraph,
     build_demo_topology,
+    digest_state,
 )
 
 
@@ -33,6 +35,14 @@ class TopologyTests(unittest.TestCase):
         topology.register(Component("job", Layer.JOB, dependencies=("missing",)))
         with self.assertRaises(ValueError):
             topology.validate()
+
+
+class EntropyTests(unittest.TestCase):
+    def test_constant_zero_window_has_zero_entropy(self):
+        monitor = EntropyMonitor()
+        for step in range(8):
+            monitor.ingest(TelemetrySample("gpu-0", "metric", 0.0, step))
+        self.assertEqual(monitor.current_entropy(), 0.0)
 
 
 class FusionTests(unittest.TestCase):
@@ -56,6 +66,54 @@ class FusionTests(unittest.TestCase):
         second = run_scenario(seed=19, fault="storage_degradation")
         self.assertEqual(first["state_digest"], second["state_digest"])
         self.assertEqual(first["receipt_digest"], second["receipt_digest"])
+
+    def test_fuse_is_idempotent_without_new_telemetry(self):
+        topology = build_demo_topology()
+        engine = StateFusionEngine(topology)
+        for step in range(24):
+            engine.ingest(TelemetrySample("gpu-0", "sm_util", 0.9, step))
+            engine.ingest(TelemetrySample("job-0", "step_time_s", 1.0, step))
+        first = engine.fuse()
+        second = engine.fuse()
+        self.assertEqual(digest_state(first), digest_state(second))
+        self.assertEqual(first.signals, second.signals)
+
+    def test_non_finite_telemetry_is_rejected_before_mutation(self):
+        topology = build_demo_topology()
+        engine = StateFusionEngine(topology)
+        with self.assertRaises(ValueError):
+            engine.ingest(TelemetrySample("gpu-0", "sm_util", float("nan"), 1.0))
+        self.assertEqual(dict(engine.latest), {})
+
+    def test_recovered_evidence_expires(self):
+        topology = build_demo_topology()
+        engine = StateFusionEngine(topology, evidence_ttl=8.0)
+        for step in range(20):
+            engine.ingest(TelemetrySample("gpu-0", "sm_util", 0.9, step))
+            engine.ingest(TelemetrySample("job-0", "step_time_s", 1.0, step))
+        for step in range(20, 28):
+            engine.ingest(TelemetrySample("gpu-0", "sm_util", 0.45, step))
+            engine.ingest(TelemetrySample("job-0", "step_time_s", 2.2, step))
+        self.assertGreater(engine.fuse().goodput_at_risk, 0.0)
+        for step in range(28, 48):
+            engine.ingest(TelemetrySample("gpu-0", "sm_util", 0.9, step))
+            engine.ingest(TelemetrySample("job-0", "step_time_s", 1.0, step))
+        recovered = engine.fuse()
+        self.assertEqual(recovered.component_risk["gpu-0"], 0.0)
+        self.assertEqual(recovered.component_risk["job-0"], 0.0)
+
+    def test_beneficial_movements_do_not_promote_degradation(self):
+        topology = build_demo_topology()
+        engine = StateFusionEngine(topology)
+        for step in range(20):
+            engine.ingest(TelemetrySample("gpu-0", "sm_util", 0.70, step))
+            engine.ingest(TelemetrySample("job-0", "step_time_s", 1.50, step))
+        for step in range(20, 30):
+            engine.ingest(TelemetrySample("gpu-0", "sm_util", 0.95, step))
+            engine.ingest(TelemetrySample("job-0", "step_time_s", 0.80, step))
+        state = engine.fuse()
+        self.assertEqual(state.component_risk["gpu-0"], 0.0)
+        self.assertEqual(state.component_risk["job-0"], 0.0)
 
 
 class PolicyTests(unittest.TestCase):
@@ -149,6 +207,20 @@ class BenchmarkTests(unittest.TestCase):
         result = benchmark(range(1, 9), "network_straggler")
         self.assertGreaterEqual(result["actionable_detection_rate"], 0.75)
 
+    def test_actionable_detection_occurs_after_injection(self):
+        result = run_scenario(seed=7, fault="network_straggler")
+        self.assertFalse(result["actionable_false_positive"])
+        self.assertGreaterEqual(
+            result["first_actionable_detection_timestamp"],
+            result["fault_injection_timestamp"],
+        )
+
+    def test_healthy_run_has_no_actionable_false_positive(self):
+        result = run_scenario(seed=7, fault="healthy")
+        self.assertFalse(result["actionable_detection"])
+        self.assertFalse(result["actionable_false_positive"])
+        self.assertIsNone(result["first_actionable_detection_timestamp"])
+
     def test_healthy_benchmark_avoids_disruptive_intervention(self):
         result = benchmark(range(1, 9), "healthy")
         self.assertEqual(result["actionable_detection_rate"], 0.0)
@@ -156,9 +228,7 @@ class BenchmarkTests(unittest.TestCase):
 
     def test_raw_signal_is_not_actionable_detection(self):
         result = benchmark(range(1, 9), "healthy")
-        self.assertGreaterEqual(
-            result["raw_signal_rate"], result["actionable_detection_rate"]
-        )
+        self.assertGreaterEqual(result["raw_signal_rate"], result["actionable_detection_rate"])
 
     def test_attribution_accuracy_is_reported(self):
         result = benchmark(range(1, 9), "storage_degradation")
