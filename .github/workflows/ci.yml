@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Compile
-        run: python -m compileall -q src tests
+        run: python -m compileall -q src tests scripts
       - name: Contract tests
         run: python -m unittest discover -s tests -v
       - name: Deterministic smoke benchmark
@@ -23,3 +23,7 @@ jobs:
           python src/failure_lab.py --seed 7 --fault network_straggler > /tmp/run-a.json
           python src/failure_lab.py --seed 7 --fault network_straggler > /tmp/run-b.json
           cmp /tmp/run-a.json /tmp/run-b.json
+      - name: Verify committed benchmark receipt
+        run: |
+          python scripts/benchmark_matrix.py > /tmp/synthetic-v1.json
+          cmp benchmarks/synthetic-v1.json /tmp/synthetic-v1.json
