@@ -21,16 +21,46 @@ system identity.
 
 No donor is represented as independently proven production infrastructure.
 
-## Current control loop
+## Module boundaries
 
 ```text
-TopologyGraph
-   |
+control_types.py
+  types + topology + canonical serialization + digests
+        |
+detectors.py ------------------------------+
+  rolling-z / trend / entropy              |
+  harmful-direction semantics              |
+        |                                   |
+fusion_engine.py                            |
+  evidence TTL + idempotent snapshots      |
+  component/layer risk + raw goodput risk  |
+        |                                   |
+attribution.py                              |
+  probable root-cause ranking               |
+        |                                   |
+calibration.py                              |
+  synthetic-only calibration                |
+        |                                   |
+recovery.py                                 |
+  Recovery Regret + fail-closed policy      |
+        |                                   |
+goodput_control.py                          |
+  stable compatibility/export surface <----+
+```
+
+## Control loop
+
+```text
 TelemetrySample
+   |
+finite/order validation
    |
 RollingBaselineDetector ----- EntropyMonitor (experimental)
    |                               |
+bounded timestamped evidence      |
    +------------ StateFusionEngine-+
+                    |
+        harmful-direction filtering
                     |
          component / layer risk
                     |
@@ -49,85 +79,154 @@ RollingBaselineDetector ----- EntropyMonitor (experimental)
 
 ## Truth layers
 
-The implementation intentionally keeps three concepts separate:
+The implementation keeps four concepts separate:
 
 1. **Raw statistical signal** — a detector saw a sufficiently unusual sample.
-2. **Actionable degradation** — persistent cross-layer evidence crosses the
-   controller's risk gates.
-3. **Recovery authorization** — a candidate action additionally satisfies
+2. **Current harmful evidence** — the movement is semantically adverse and has
+   not expired from the bounded evidence window.
+3. **Actionable degradation** — persistent cross-layer evidence crosses the
+   controller's system/goodput gates.
+4. **Recovery authorization** — a candidate action additionally satisfies
    confidence, checkpoint, and capacity policy.
 
-A raw signal is not a failure declaration and is not authorization to disrupt a
-workload.
+A raw signal is not a failure declaration and is never by itself authorization
+to disrupt a workload.
+
+## Evidence lifetime and snapshot semantics
+
+The engine retains raw anomaly evidence only for a bounded TTL. Old anomalies
+therefore cannot keep a recovered component permanently degraded.
+
+Trend evidence is computed for a snapshot and is not appended into the raw
+history. Entropy history is updated at most once for a telemetry timestamp.
+Consequently, repeated `fuse()` calls without new telemetry are idempotent and
+cannot manufacture additional persistence merely because state was read again.
+
+## Metric direction semantics
+
+Automatic risk promotion is conservative:
+
+- rising latency, step time, temperature, error/ECC/retry/retransmit, packet
+  loss, or queue pressure is harmful;
+- falling utilization, throughput, bandwidth, goodput, or health is harmful;
+- the opposite movement is not promoted as degradation;
+- unknown metric semantics remain observable but do not authorize automatic
+  degradation scoring.
+
+This prevents improving workload behavior from being interpreted as a reason to
+reroute or drain infrastructure.
+
+## Input and entropy safety
+
+Telemetry values and timestamps must be finite, and timestamps must be
+non-decreasing. Validation occurs before detector or state mutation.
+
+Entropy calculation fails safely on constant windows and invalid zero-width
+ranges. Entropy remains an experimental feature whose incremental value must be
+shown by comparative benchmark evidence before promotion.
 
 ## Attribution
 
-`RootCauseAttributor` ranks probable initiating components using local risk,
-downstream risk pressure, topology blast radius, and a small infrastructure
-source prior. It is an attribution heuristic, not proof of physical causality.
+`RootCauseAttributor` ranks probable initiating components using current local
+risk, downstream risk pressure, topology blast radius, and a small
+infrastructure source prior. It is an attribution heuristic, not proof of
+physical causality.
 
-The deterministic synthetic corpus currently injects three known roots:
+The deterministic synthetic corpus injects three known roots:
 
 - network straggler -> `nic-0`
 - GPU drift -> `gpu-1`
 - storage degradation -> `storage-0`
 
-Those cases are suitable for regression testing attribution behavior, not for
-claiming real-fleet diagnostic accuracy.
+Those cases test regression behavior; they do not establish real-fleet
+diagnostic accuracy.
 
 ## Goodput calibration boundary
 
 `GoodputModel` remains a raw structural risk heuristic. Synthetic calibration is
 applied only inside the failure lab by `SyntheticGoodputCalibrator`.
 
-This separation prevents a coefficient fitted to synthetic workload timing from
-silently becoming a production model constant. Real trace replay must replace
-or recalibrate it before any external performance claim is eligible.
+This prevents a coefficient fitted to synthetic workload timing from silently
+becoming a production model constant. Real trace replay must replace or
+recalibrate it before any external performance claim is eligible.
 
 ## Safety invariants
 
 1. Unknown topology dependencies fail validation.
 2. Unknown telemetry components fail ingestion.
-3. Isolated statistical excursions remain evidence but do not become actionable degradation.
-4. Disruptive recovery requires persistent risk across at least two components.
-5. Low fault confidence blocks disruptive action.
-6. Reroute requires replacement capacity.
-7. Checkpoint/requeue requires minimally fresh checkpoint state.
-8. Identical seeded scenarios produce deterministic state and recovery receipts.
-9. The benchmark matrix is regenerated and byte-compared to its committed receipt.
-10. Entropy remains experimental until controlled comparison demonstrates unique value.
-11. No performance claim is promoted from source comments or synthetic evidence as though it were production evidence.
+3. Non-finite telemetry is rejected before state mutation.
+4. Out-of-order telemetry timestamps fail closed.
+5. Constant entropy windows return zero without unsafe binning.
+6. Raw statistical excursions do not equal actionable degradation.
+7. Only harmful-direction evidence contributes to automatic degradation risk.
+8. Historical anomaly evidence expires after its bounded TTL.
+9. Repeated snapshots without new telemetry are idempotent.
+10. Disruptive recovery requires persistent risk across at least two components.
+11. Low fault confidence blocks disruptive action.
+12. Reroute requires replacement capacity.
+13. Checkpoint/requeue requires minimally fresh checkpoint state.
+14. Identical seeded scenarios produce deterministic state and recovery receipts.
+15. The benchmark matrix is regenerated and byte-compared to its committed receipt.
+16. Synthetic evidence is never represented as employer or production evidence.
 
 ## Current synthetic evidence gate
 
 `benchmarks/synthetic-v1.json` is generated by `scripts/benchmark_matrix.py` over
-16 deterministic seeds for each of four scenarios. It records both raw-signal
-and actionable-detection rates so noise cannot be mislabeled as successful fault
-detection.
+16 deterministic seeds for each of four scenarios. The bounded matrix uses
+schema `glaciereq.goodput.synthetic-benchmark.v2` and records aggregate evidence
+plus per-scenario run-receipt cardinality without embedding all 64 run digests.
 
-The receipt is intentionally scoped to:
+Current benchmark digest:
 
-`deterministic_synthetic_failure_lab_only`
+`a9b754e61c95829e0fb10d33ef7d2b253d7bcbd0351e8ad582ca05bc6761f25c`
 
-and carries a SHA-256 benchmark digest over its canonical payload.
+The matrix explicitly separates background raw signals from post-injection
+actionable detection. Current synthetic regression results include:
+
+- healthy: 0% actionable detection, 0% actionable false positives, 0/16
+  disruptive interventions;
+- network straggler: 100% actionable detection, 0% actionable false positives,
+  1.75-step mean post-injection detection delay;
+- GPU drift proxy: 100% actionable detection, 0% actionable false positives,
+  2.8125-step mean delay;
+- storage degradation: 100% actionable detection, 0% actionable false
+  positives, 1.875-step mean delay;
+- current injected fault families: 100% top-1 attribution in this deterministic
+  corpus only.
+
+These are synthetic regression properties, not production performance claims.
+
+## Verification state
+
+The current local contract suite contains **25 tests**, including dedicated
+regressions for constant entropy, non-finite input, snapshot idempotence,
+evidence expiry, beneficial metric movement, and post-injection detection
+semantics.
+
+The hosted GitHub Actions workflow is configured to compile source/tests/scripts,
+run contracts, verify repeated seeded output, and regenerate/byte-compare the
+benchmark receipt. GitHub currently prevents the runner from starting because
+an Actions budget limit is active; that infrastructure block must not be
+reported as a code-test failure or a hosted pass.
 
 ## Next engineering delta
 
-The next highest-value slice is **comparative baselining + intervention
+The highest-value next slice is **comparative baselining + intervention
 verification**, not another detector:
 
 - static threshold baseline;
-- rolling-z baseline;
+- rolling-z-only baseline;
 - fusion without attribution/planning;
 - fusion + attribution;
 - full Recovery Regret planner;
-- simulated post-action state transition and rollback/escalation verification.
+- simulated post-action state transition;
+- explicit verified-recovery, rollback, and escalation states.
 
 Primary measurements:
 
 - actionable precision / recall;
 - healthy false-action rate;
-- detection lead time;
+- post-injection detection lead time;
 - root-cause top-1/top-3 accuracy;
 - goodput calibration error;
 - unnecessary disruption;
