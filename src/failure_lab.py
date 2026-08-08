@@ -6,6 +6,7 @@ import json
 import random
 import sys
 from dataclasses import replace
+from itertools import groupby
 from pathlib import Path
 from typing import Dict, Iterable
 
@@ -64,31 +65,72 @@ def generate_samples(
         yield TelemetrySample("job-0", "step_time_s", step_time, timestamp)
 
 
+def _is_actionable(state) -> bool:
+    active_components = sum(
+        risk >= 0.25 for risk in state.component_risk.values()
+    )
+    return (
+        active_components >= 2
+        and state.system_risk >= 0.25
+        and state.goodput_at_risk >= 0.25
+    )
+
+
 def run_scenario(seed: int, fault: str) -> Dict[str, object]:
     topology = build_demo_topology()
     engine = StateFusionEngine(topology)
-    first_detection = None
+    calibrator = SyntheticGoodputCalibrator()
+    first_raw_signal = None
+    raw_signal_count = 0
+    background_raw_signals = 0
+    first_actionable = None
+    first_post_injection_actionable = None
+    actionable_false_positive = False
     sample_index = 0
     pre_fault_step_times = []
     post_fault_step_times = []
+    fault_injection_timestamp = 33.0 if fault != "healthy" else None
+    raw_state = None
+    state = None
 
-    for sample in generate_samples(seed=seed, fault=fault):
-        signal = engine.ingest(sample)
-        if signal and first_detection is None:
-            first_detection = sample.timestamp
-        if sample.component_id == "job-0" and sample.metric == "step_time_s":
-            if sample.timestamp <= 32:
-                pre_fault_step_times.append(sample.value)
-            else:
-                post_fault_step_times.append(sample.value)
-        sample_index += 1
+    stream = generate_samples(seed=seed, fault=fault)
+    for timestamp, step_samples in groupby(stream, key=lambda sample: sample.timestamp):
+        for sample in step_samples:
+            signal = engine.ingest(sample)
+            if signal:
+                raw_signal_count += 1
+                if first_raw_signal is None:
+                    first_raw_signal = sample.timestamp
+                if (
+                    fault_injection_timestamp is None
+                    or sample.timestamp < fault_injection_timestamp
+                ):
+                    background_raw_signals += 1
+            if sample.component_id == "job-0" and sample.metric == "step_time_s":
+                if sample.timestamp <= 32:
+                    pre_fault_step_times.append(sample.value)
+                else:
+                    post_fault_step_times.append(sample.value)
+            sample_index += 1
 
-    raw_state = engine.fuse()
-    calibrator = SyntheticGoodputCalibrator()
-    state = replace(
-        raw_state,
-        goodput_at_risk=calibrator.apply(raw_state.goodput_at_risk),
-    )
+        raw_state = engine.fuse()
+        state = replace(
+            raw_state,
+            goodput_at_risk=calibrator.apply(raw_state.goodput_at_risk),
+        )
+        if _is_actionable(state):
+            if first_actionable is None:
+                first_actionable = timestamp
+            if fault_injection_timestamp is None:
+                actionable_false_positive = True
+            elif timestamp < fault_injection_timestamp:
+                actionable_false_positive = True
+            elif first_post_injection_actionable is None:
+                first_post_injection_actionable = timestamp
+
+    if raw_state is None or state is None:
+        raise RuntimeError("scenario produced no telemetry")
+
     attributor = RootCauseAttributor()
     causes = attributor.rank(state, topology)
     planner = CounterfactualPlanner()
@@ -115,18 +157,22 @@ def run_scenario(seed: int, fault: str) -> Dict[str, object]:
         "healthy": None,
     }[fault]
     top_cause = causes[0].component_id if causes else None
-    active_components = sum(
-        risk >= 0.25 for risk in state.component_risk.values()
-    )
     actionable_detection = (
-        active_components >= 2
-        and state.system_risk >= 0.25
-        and state.goodput_at_risk >= 0.25
+        first_post_injection_actionable is not None
+        if fault_injection_timestamp is not None
+        else False
+    )
+    detection_delay_steps = (
+        first_post_injection_actionable - fault_injection_timestamp
+        if first_post_injection_actionable is not None
+        and fault_injection_timestamp is not None
+        else None
     )
 
     return {
         "seed": seed,
         "fault": fault,
+        "fault_injection_timestamp": fault_injection_timestamp,
         "expected_root": expected_root,
         "top_cause": top_cause,
         "top1_correct": top_cause == expected_root if expected_root else top_cause is None,
@@ -141,9 +187,15 @@ def run_scenario(seed: int, fault: str) -> Dict[str, object]:
             }
             for cause in causes
         ],
-        "first_raw_signal_timestamp": first_detection,
-        "raw_signal_observed": first_detection is not None,
+        "first_raw_signal_timestamp": first_raw_signal,
+        "raw_signal_observed": first_raw_signal is not None,
+        "raw_signal_count": raw_signal_count,
+        "background_raw_signals": background_raw_signals,
+        "first_actionable_timestamp": first_actionable,
+        "first_actionable_detection_timestamp": first_post_injection_actionable,
         "actionable_detection": actionable_detection,
+        "actionable_false_positive": actionable_false_positive,
+        "detection_delay_steps": detection_delay_steps,
         "samples": sample_index,
         "raw_goodput_at_risk": raw_state.goodput_at_risk,
         "actual_goodput_loss": round(actual_goodput_loss, 6),
@@ -165,19 +217,37 @@ def run_scenario(seed: int, fault: str) -> Dict[str, object]:
 def benchmark(seeds: Iterable[int], fault: str) -> Dict[str, object]:
     runs = [run_scenario(seed, fault) for seed in seeds]
     raw_signaled = [run for run in runs if run["raw_signal_observed"]]
+    background_signaled = [run for run in runs if run["background_raw_signals"] > 0]
     actionable = [run for run in runs if run["actionable_detection"]]
+    false_actions = [run for run in runs if run["actionable_false_positive"]]
     interventions = [
         run for run in runs
         if run["selected_action"] not in {"observe", "throttle"}
+    ]
+    delays = [
+        run["detection_delay_steps"]
+        for run in runs
+        if run["detection_delay_steps"] is not None
     ]
     return {
         "fault": fault,
         "runs": len(runs),
         "raw_signal_runs": len(raw_signaled),
         "raw_signal_rate": round(len(raw_signaled) / max(len(runs), 1), 6),
+        "background_raw_signal_runs": len(background_signaled),
+        "background_raw_signal_rate": round(
+            len(background_signaled) / max(len(runs), 1), 6
+        ),
         "actionable_detections": len(actionable),
         "actionable_detection_rate": round(
             len(actionable) / max(len(runs), 1), 6
+        ),
+        "actionable_false_positives": len(false_actions),
+        "actionable_false_positive_rate": round(
+            len(false_actions) / max(len(runs), 1), 6
+        ),
+        "mean_detection_delay_steps": (
+            round(sum(delays) / len(delays), 6) if delays else None
         ),
         "top1_attribution_accuracy": round(
             sum(bool(run["top1_correct"]) for run in runs) / max(len(runs), 1),
