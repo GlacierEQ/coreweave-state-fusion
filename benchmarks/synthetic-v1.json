@@ -1,0 +1,146 @@
+{
+  "benchmark_digest": "596615cc6ffb3324b826b683ad602ab49fd848ddc5a0dd7860cfa53f4f7caf45",
+  "claim_boundary": "Synthetic lab evidence only. No production workload, employer deployment, or production performance claim is represented.",
+  "scenarios": {
+    "gpu_thermal_drift": {
+      "action_counts": {
+        "reroute": 16
+      },
+      "actionable_detection_rate": 1.0,
+      "actionable_detections": 16,
+      "disruptive_interventions": 16,
+      "fault": "gpu_thermal_drift",
+      "mean_actual_goodput_loss": 0.433204,
+      "mean_goodput_at_risk": 0.421065,
+      "mean_goodput_calibration_error": 0.015584,
+      "raw_signal_rate": 1.0,
+      "raw_signal_runs": 16,
+      "receipt_digests": [
+        "7c89f8239e4b9b8ac585773f9e19cb96e7778e845a11ad53e5082eb2e69e507c",
+        "b61dcea435582c3423dd859d1603087cb23c95fea0676924fe2c52ffc7988846",
+        "7bd11fa60335ec118e4e198b1611c5a2dfe760f0cff1c1d10d49bb38bc636626",
+        "fc76f154f315e6485e5829d316db3e85eae0c956c91c05bd336a062b293a3b91",
+        "f08dc8c218f18a729536b16cbeb406c5fe68b2093a136529ca083b5bcf1afc35",
+        "fdf401465acbad283b6c441ce0b27fde0b3f9b820a88efd08764b937461ac610",
+        "4e8e4658c1b2d1fe3f14bfeb573ce95f5b30268506b1ad64318e44212f241115",
+        "cb28d43f7c25a95a894aecf96b71bca1c962cfee8aaf99ea04b437019d1d8bf6",
+        "8ea617343c0e394e781a5780c20d91b21039c88f511a97d6a5719cc82a098a4d",
+        "cd1855c94511d445a7c4c0682f56bdc6f8c7058a47680bd8e00c8f86c58aa895",
+        "4f65443db93900e3e0261b3440486f9a2bd2bf54cddbd5335befc1de299d6d62",
+        "cf998cb26873e1c09d85a2e21d35858d36245568e3c7c227b0ec73eb603df43b",
+        "162366dad1e989fdc8ada5d4ebb72d85ab1f768f9c2f0449cce655a1540fe939",
+        "1deef4adda5f59f21c2214148dd5d8776e0ce13fbb8027730cd1b8f41b8d72a3",
+        "91cf341ac2f231a65929212698e4f257772b6f4afcfda424eb21e263a6bfe63f",
+        "15d78310a2cc01d4de63b2744b7845a26f6ec4cb457e01a1527de95707917dd7"
+      ],
+      "runs": 16,
+      "top1_attribution_accuracy": 1.0
+    },
+    "healthy": {
+      "action_counts": {
+        "observe": 16
+      },
+      "actionable_detection_rate": 0.0,
+      "actionable_detections": 0,
+      "disruptive_interventions": 0,
+      "fault": "healthy",
+      "mean_actual_goodput_loss": 0.001694,
+      "mean_goodput_at_risk": 0.043639,
+      "mean_goodput_calibration_error": 0.044407,
+      "raw_signal_rate": 1.0,
+      "raw_signal_runs": 16,
+      "receipt_digests": [
+        "cf427ff413f0ddf956a4e89d3bfccc6a9ea41ddad2089972f6b10f2685e9688d",
+        "9b5a9d8dfb98b3ab8d113316b6274d85039fa2db47dc932c2572312ba0382777",
+        "e3dd66b397d8347594b5a57f81dabb1d824d5ca86df2c16ef6eb1734dabd813b",
+        "b5a62bb78de9bfd1fa6c262f49c778937553cb6c5dc0123587a93f2fba07bead",
+        "35546d129e301fd2aea3efc94d02108fc223b448b904691bae1cacdc2743d327",
+        "50d4294a8807f499669ee73054ed73bc4f38e7bf20d7ea4b42edb99159286654",
+        "1d6159d79b57d3b9dadbb057888fa49ed471c49a6436f9b4f5b27ddb6b055976",
+        "e04e41c89bf63a6144b5afb19572605cb888e29eb9d7736dbd8f86795010db08",
+        "b1db12a8746158a80ca0d40178aa4c0ccad41848e7ae773fabc586e18854f045",
+        "7d4073aa97468a556b0e005f2998311a8e3501324783eac542c68febaa7c958d",
+        "376f547be6ec8fa2372958d45ef6c8e11311d5d2e6cccfa2ba616a6121d548b2",
+        "bcffdb68f56b90078cbd678975f72d785e7c34bddbaa3cdc0f722e9ce84f70b8",
+        "bfd4d6e3638ed6f228212b1a47bf3fba5a6830b05a8d45e32763d240d6eb5711",
+        "f65cdbcfefe16dffe33c7d76260ccc2d3ad912ea3f4129936e79683ce6f40b9c",
+        "c0da61bcb72c6433d423a1021325039866fbdd2fd3388962cfa517b15ab04e67",
+        "13d1d9bf1a5c520f7ab55616a8158e4dfea037f753527572945267d88d0c22b7"
+      ],
+      "runs": 16,
+      "top1_attribution_accuracy": 1.0
+    },
+    "network_straggler": {
+      "action_counts": {
+        "reroute": 16
+      },
+      "actionable_detection_rate": 1.0,
+      "actionable_detections": 16,
+      "disruptive_interventions": 16,
+      "fault": "network_straggler",
+      "mean_actual_goodput_loss": 0.504769,
+      "mean_goodput_at_risk": 0.479895,
+      "mean_goodput_calibration_error": 0.024873,
+      "raw_signal_rate": 1.0,
+      "raw_signal_runs": 16,
+      "receipt_digests": [
+        "dda20fee2979d33cd177c7649dca7e99fbe639ac2169c83f9484b953fbcd065a",
+        "81a5945643744a0c854dcdf32936a9a141f2ce9dce91742e4e495a8c3ff3498d",
+        "e3adc5ec36c1b75db5db013e14323d0f49e0b5017bfa5348a6449a206fb275c3",
+        "258f52282d96725f876c2b6125e39a5d198c5d1fe36052edf5c97dded3f5d01f",
+        "08d17561b33b6f80cf98d22871ce9aa48a8a7a0d391c43a5883dab824c06b9f3",
+        "f7cde88c97eee3bdaf19c531886f40846f2f74909e5920aff34a5d39530add37",
+        "d49e7614a6ba85537e2e1f384ff4bac2f8cea0d114f33e0c20104db600d09e60",
+        "2d1102efcf46dbe9a58d188656528feaf9ad40f942a1aa5dfbfcf511f82c6569",
+        "e947d099e859aed539ca68df296088e9a7c96d65b077e51ca5d295e0c888df69",
+        "33b4f8db7707ba0ed5bcb56e8b7bde5ed7c7fb11e4b3081863cd868d203906be",
+        "e9ff19c23db532bbc32b651f32d33f7c7d0f25a4de6b9531f016484263d8ce87",
+        "4b36be9c0a7d04cbf20a78ec1d228962b4026b66f92e4759723f4989ea7fd767",
+        "6964b2db0b39429abe467d05fb72cea6b08177650d8d945ba497d3955d344267",
+        "4233a827e6472c062153e7960e06d5084de65db0037272e9148643f0e0434dca",
+        "e4e143a31164e9fff39c8b552e0233fc5eb2eb59209d735c827cd92059778155",
+        "02d1a621b1cf5cb253f57c56a8c3ac83487c08ba8eeaba0bc88acc1c1dd8e6fa"
+      ],
+      "runs": 16,
+      "top1_attribution_accuracy": 1.0
+    },
+    "storage_degradation": {
+      "action_counts": {
+        "reroute": 16
+      },
+      "actionable_detection_rate": 1.0,
+      "actionable_detections": 16,
+      "disruptive_interventions": 16,
+      "fault": "storage_degradation",
+      "mean_actual_goodput_loss": 0.37278,
+      "mean_goodput_at_risk": 0.436693,
+      "mean_goodput_calibration_error": 0.063914,
+      "raw_signal_rate": 1.0,
+      "raw_signal_runs": 16,
+      "receipt_digests": [
+        "c3d5d6f78182dfe5e3bd184a6259369608ff82b8e448bb9d8436fb3b0c9dd73a",
+        "a62087847f789c3dfe4bf1cb305338fc09bb55f640b24f016b43044f34c39881",
+        "ca04ae8579aa700b8efb55121dbe07e44d3eaeb128607f5d60277570478d0a0a",
+        "a4cafb712e970abc359d316beac87d0a6b34eeedfa8a3c3cf6f050ec09f2ca47",
+        "7d14979f849d7231b7cf145178f5e03971a8f949563024956352b9565bfbdd0f",
+        "44f7b1c3b66ca841cf9162a7509c61fe33a22e4367c3999e7a6543ecb14045f8",
+        "6e8ede318da7ee2766af8a905aee012cff0875b5eb5d116514106f84f1576761",
+        "7bd43621fac7869156e59ab45fdeb7e09e47e91ebe15fa410edb513ba490c9bc",
+        "ff0fd1222af62a6d771ab6b560d3187124274d3c195922130dc59eafa42e4084",
+        "fb2dba44785e2dcd090e046c40808215f5285efecfe3d1e2c77e76b0752fb1b4",
+        "cbbcd7851dfe6de4a9e0d8ebf62de9cd621c1716bedf581f269a12170055df5e",
+        "27fd8506193c6633a07f5e2d5b8fc3a0847e925a23b5f724899b63c4a6d03c45",
+        "a72e2bc104a443c7f13963e73a72ebc405cf7794b4521f5c2d52310c76c0ff1f",
+        "16d2004099e15e5912a08cfa3e649406f0805f0d96a80d37abafac3ca181db69",
+        "08cb9d445e4d6b256ab11fa29051a9322cd313e3a4a7587c61c8f834edb40de0",
+        "dcaee3dd0726de19bc083904c3fcb8dcaae86e270d09d20de793ef4d0420aff1"
+      ],
+      "runs": 16,
+      "top1_attribution_accuracy": 1.0
+    }
+  },
+  "schema": "glaciereq.goodput.synthetic-benchmark.v1",
+  "scope": "deterministic_synthetic_failure_lab_only",
+  "seed_count": 16,
+  "seed_start": 1
+}
