@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a deterministic synthetic benchmark receipt."""
+"""Generate a deterministic bounded synthetic benchmark receipt."""
 from __future__ import annotations
 
 import argparse
@@ -22,13 +22,24 @@ FAULTS = (
 )
 
 
+def _bounded_scenario(result: dict) -> dict:
+    """Keep matrix evidence compact while preserving run cardinality."""
+    bounded = dict(result)
+    receipt_digests = bounded.pop("receipt_digests", [])
+    bounded["run_receipt_count"] = len(receipt_digests)
+    return bounded
+
+
 def build_matrix(seed_start: int = 1, seed_count: int = 16) -> dict:
     if seed_count < 1:
         raise ValueError("seed_count must be positive")
     seeds = range(seed_start, seed_start + seed_count)
-    scenarios = {fault: benchmark(seeds, fault) for fault in FAULTS}
+    scenarios = {
+        fault: _bounded_scenario(benchmark(seeds, fault))
+        for fault in FAULTS
+    }
     payload = {
-        "schema": "glaciereq.goodput.synthetic-benchmark.v1",
+        "schema": "glaciereq.goodput.synthetic-benchmark.v2",
         "scope": "deterministic_synthetic_failure_lab_only",
         "seed_start": seed_start,
         "seed_count": seed_count,
