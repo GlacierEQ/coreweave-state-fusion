@@ -1,0 +1,98 @@
+{
+  "benchmark_digest": "a9b754e61c95829e0fb10d33ef7d2b253d7bcbd0351e8ad582ca05bc6761f25c",
+  "claim_boundary": "Synthetic lab evidence only. No production workload, employer deployment, or production performance claim is represented.",
+  "scenarios": {
+    "gpu_thermal_drift": {
+      "action_counts": {
+        "reroute": 16
+      },
+      "actionable_detection_rate": 1.0,
+      "actionable_detections": 16,
+      "actionable_false_positive_rate": 0.0,
+      "actionable_false_positives": 0,
+      "background_raw_signal_rate": 1.0,
+      "background_raw_signal_runs": 16,
+      "disruptive_interventions": 16,
+      "fault": "gpu_thermal_drift",
+      "mean_actual_goodput_loss": 0.433204,
+      "mean_detection_delay_steps": 2.8125,
+      "mean_goodput_at_risk": 0.419178,
+      "mean_goodput_calibration_error": 0.014609,
+      "raw_signal_rate": 1.0,
+      "raw_signal_runs": 16,
+      "run_receipt_count": 16,
+      "runs": 16,
+      "top1_attribution_accuracy": 1.0
+    },
+    "healthy": {
+      "action_counts": {
+        "observe": 16
+      },
+      "actionable_detection_rate": 0.0,
+      "actionable_detections": 0,
+      "actionable_false_positive_rate": 0.0,
+      "actionable_false_positives": 0,
+      "background_raw_signal_rate": 1.0,
+      "background_raw_signal_runs": 16,
+      "disruptive_interventions": 0,
+      "fault": "healthy",
+      "mean_actual_goodput_loss": 0.001694,
+      "mean_detection_delay_steps": null,
+      "mean_goodput_at_risk": 0.0,
+      "mean_goodput_calibration_error": 0.001694,
+      "raw_signal_rate": 1.0,
+      "raw_signal_runs": 16,
+      "run_receipt_count": 16,
+      "runs": 16,
+      "top1_attribution_accuracy": 1.0
+    },
+    "network_straggler": {
+      "action_counts": {
+        "reroute": 16
+      },
+      "actionable_detection_rate": 1.0,
+      "actionable_detections": 16,
+      "actionable_false_positive_rate": 0.0,
+      "actionable_false_positives": 0,
+      "background_raw_signal_rate": 1.0,
+      "background_raw_signal_runs": 16,
+      "disruptive_interventions": 16,
+      "fault": "network_straggler",
+      "mean_actual_goodput_loss": 0.504769,
+      "mean_detection_delay_steps": 1.75,
+      "mean_goodput_at_risk": 0.479867,
+      "mean_goodput_calibration_error": 0.024901,
+      "raw_signal_rate": 1.0,
+      "raw_signal_runs": 16,
+      "run_receipt_count": 16,
+      "runs": 16,
+      "top1_attribution_accuracy": 1.0
+    },
+    "storage_degradation": {
+      "action_counts": {
+        "reroute": 16
+      },
+      "actionable_detection_rate": 1.0,
+      "actionable_detections": 16,
+      "actionable_false_positive_rate": 0.0,
+      "actionable_false_positives": 0,
+      "background_raw_signal_rate": 1.0,
+      "background_raw_signal_runs": 16,
+      "disruptive_interventions": 16,
+      "fault": "storage_degradation",
+      "mean_actual_goodput_loss": 0.37278,
+      "mean_detection_delay_steps": 1.875,
+      "mean_goodput_at_risk": 0.433482,
+      "mean_goodput_calibration_error": 0.060702,
+      "raw_signal_rate": 1.0,
+      "raw_signal_runs": 16,
+      "run_receipt_count": 16,
+      "runs": 16,
+      "top1_attribution_accuracy": 1.0
+    }
+  },
+  "schema": "glaciereq.goodput.synthetic-benchmark.v2",
+  "scope": "deterministic_synthetic_failure_lab_only",
+  "seed_count": 16,
+  "seed_start": 1
+}
